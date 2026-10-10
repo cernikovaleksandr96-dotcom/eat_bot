@@ -1,0 +1,5 @@
+aiogram
+requests
+groq
+python-dotenv
+aiohttp
