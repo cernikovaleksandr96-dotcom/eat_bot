@@ -50,8 +50,8 @@ if not re.fullmatch(r"\d{6,}:[A-Za-z0-9_-]{30,}", BOT_TOKEN):
         f"BOT_TOKEN в secrets.env выглядит неверно (длина {len(BOT_TOKEN)}, начало «{BOT_TOKEN[:6]}»). "
         "Нужен токен целиком из @BotFather, вида 123456789:AAH... без лишних символов и русских букв."
     )
-WEBAPP_URL = os.getenv("WEBAPP_URL") or "https://fretful-humid-strongman.ngrok-free.dev"  # start.bat подставляет сам
-PORT = 8000
+WEBAPP_URL = os.getenv("WEBAPP_URL") or "https://eat-bot-c12n.onrender.com"  # start.bat подставляет сам
+PORT = int(os.environ.get("PORT", 10000))
 LIMIT, WINDOW = 15, 3600  # не больше 15 запросов к нейросети в час на пользователя
 WEB_DIR = Path(__file__).parent / "webapp"
 DATA_DIR = Path(__file__).parent / "userdata"  # любимые блюда и свои рецепты каждого пользователя (файл на Telegram id)
