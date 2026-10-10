@@ -50,10 +50,12 @@ if not re.fullmatch(r"\d{6,}:[A-Za-z0-9_-]{30,}", BOT_TOKEN):
         f"BOT_TOKEN в secrets.env выглядит неверно (длина {len(BOT_TOKEN)}, начало «{BOT_TOKEN[:6]}»). "
         "Нужен токен целиком из @BotFather, вида 123456789:AAH... без лишних символов и русских букв."
     )
-WEBAPP_URL = os.getenv("WEBAPP_URL") or "https://eat-bot-c12n.onrender.com"  # start.bat подставляет сам
+WEBAPP_URL = (os.getenv("WEBAPP_URL") or "https://eat-bot-c12n.onrender.com").strip().rstrip("/")  # start.bat подставляет сам
 PORT = int(os.environ.get("PORT", 10000))
 LIMIT, WINDOW = 15, 3600  # не больше 15 запросов к нейросети в час на пользователя
-WEB_DIR = Path(__file__).parent / "webapp"
+_BASE = Path(__file__).parent
+# index.html и bg.jpg могут лежать в папке webapp/ или прямо рядом с bot.py (как в репозитории на GitHub)
+WEB_DIR = _BASE / "webapp" if (_BASE / "webapp" / "index.html").exists() else _BASE
 DATA_DIR = Path(__file__).parent / "userdata"  # любимые блюда и свои рецепты каждого пользователя (файл на Telegram id)
 DATA_DIR.mkdir(exist_ok=True)
 MAX_USER_DATA = 300_000  # байт на одного пользователя
@@ -542,11 +544,17 @@ def retry_kb() -> ReplyKeyboardMarkup:
 
 
 async def webapp_alive() -> bool:
+    """Проверяем свой же веб-сервер локально (а не через внешний адрес): на Render внешний адрес
+    может «просыпаться» дольше 5 секунд, и бот ложно писал про технические работы."""
+    if not (WEB_DIR / "index.html").exists():
+        logging.error("Не найден index.html в %s", WEB_DIR)
+        return False
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(WEBAPP_URL, timeout=aiohttp.ClientTimeout(total=5)) as r:
+            async with session.get(f"http://127.0.0.1:{PORT}/health", timeout=aiohttp.ClientTimeout(total=5)) as r:
                 return r.status == 200
     except Exception:
+        logging.exception("Локальная проверка веб-сервера не прошла")
         return False
 
 
@@ -857,6 +865,10 @@ async def index(request: web.Request) -> web.FileResponse:
     return web.FileResponse(WEB_DIR / "index.html", headers={"Cache-Control": "no-store"})
 
 
+async def health(request: web.Request) -> web.Response:
+    return web.Response(text="ok")
+
+
 async def bg_image(request: web.Request) -> web.StreamResponse:
     """Свой фон: положи фото рядом с index.html (webapp/bg.jpg, .jpeg, .png или .webp)."""
     for name in ("bg.jpg", "bg.jpeg", "bg.png", "bg.webp"):
@@ -871,13 +883,15 @@ async def main():
     logging.info("Модели по порядку: %s", ", ".join(m["id"] for m in MODELS))
     app = web.Application()
     app.router.add_get("/", index)
+    app.router.add_get("/health", health)
     app.router.add_get("/bg.jpg", bg_image)
     app.router.add_post("/api/recipes", api_recipes)
     app.router.add_post("/api/send", api_send)
     app.router.add_post("/api/data", api_data)
     runner = web.AppRunner(app)
     await runner.setup()
-    await web.TCPSite(runner, "127.0.0.1", PORT).start()
+    await web.TCPSite(runner, "0.0.0.0", PORT).start()  # на Render слушать надо 0.0.0.0, не 127.0.0.1
+    logging.info("Веб-сервер запущен на порту %s, WEBAPP_URL=%s", PORT, WEBAPP_URL)
     await dp.start_polling(bot)
 
 
